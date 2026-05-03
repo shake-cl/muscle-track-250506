@@ -1,0 +1,822 @@
+import { useState, useEffect, useCallback } from "react";
+
+const MUSCLE_GROUPS = ["胸", "背中", "肩", "腕", "脚", "腹筋", "全身"] as const;
+type MuscleGroup = typeof MUSCLE_GROUPS[number];
+
+const DEFAULT_EXERCISES: Record<MuscleGroup, string[]> = {
+  胸: ["ベンチプレス", "ダンベルフライ", "プッシュアップ", "ケーブルクロスオーバー", "インクラインプレス"],
+  背中: ["デッドリフト", "懸垂", "ラットプルダウン", "ベントオーバーロウ", "シーテッドロウ"],
+  肩: ["ショルダープレス", "サイドレイズ", "フロントレイズ", "フェイスプル", "アーノルドプレス"],
+  腕: ["バーベルカール", "ハンマーカール", "トライセプスプッシュダウン", "スカルクラッシャー", "ディップス"],
+  脚: ["スクワット", "レッグプレス", "ランジ", "レッグカール", "カーフレイズ"],
+  腹筋: ["クランチ", "プランク", "レッグレイズ", "ロシアンツイスト", "ケーブルクランチ"],
+  全身: ["バーピー", "クリーン＆プレス", "スナッチ", "ケトルベルスイング", "マウンテンクライマー"],
+};
+
+const STORAGE_KEY = "workout-tracker-data";
+const EXERCISES_KEY = "workout-tracker-exercises";
+const APIKEY_KEY = "workout-tracker-apikey";
+
+interface SetEntry {
+  id: number;
+  muscle: MuscleGroup;
+  exercise: string;
+  weight: string;
+  reps: string;
+  sets: string;
+}
+
+interface WorkoutEntry {
+  id: number;
+  date: string;
+  sets: SetEntry[];
+}
+
+function formatDate(d: string) {
+  return new Date(d + "T00:00:00").toLocaleDateString("ja-JP", {
+    year: "numeric", month: "short", day: "numeric", weekday: "short",
+  });
+}
+
+function getTodayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export default function App() {
+  const [tab, setTab] = useState<"record" | "history" | "ai">("record");
+  const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
+  const [exercises, setExercises] = useState<Record<MuscleGroup, string[]>>(DEFAULT_EXERCISES);
+  const [todaySets, setTodaySets] = useState<SetEntry[]>([]);
+  const [selectedDate, setSelectedDate] = useState(getTodayStr());
+  const [form, setForm] = useState<{ muscle: MuscleGroup; exercise: string; weight: string; reps: string; sets: string }>({
+    muscle: "胸", exercise: "ベンチプレス", weight: "", reps: "", sets: "",
+  });
+  const [aiSuggestion, setAiSuggestion] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup>("胸");
+  const [toast, setToast] = useState("");
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newExName, setNewExName] = useState("");
+  const [newExMuscle, setNewExMuscle] = useState<MuscleGroup>("胸");
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(APIKEY_KEY) ?? "");
+
+  useEffect(() => {
+    try {
+      const r = localStorage.getItem(STORAGE_KEY);
+      if (r) setWorkouts(JSON.parse(r));
+      const e = localStorage.getItem(EXERCISES_KEY);
+      if (e) setExercises(JSON.parse(e));
+    } catch { /* ignore */ }
+  }, []);
+
+  const save = useCallback((data: WorkoutEntry[]) => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+  }, []);
+
+  const saveExercises = useCallback((data: Record<MuscleGroup, string[]>) => {
+    try { localStorage.setItem(EXERCISES_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+  }, []);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2500);
+  };
+
+  const handleMuscleChange = (m: MuscleGroup) => {
+    setForm(f => ({ ...f, muscle: m, exercise: exercises[m][0] }));
+  };
+
+  const handleAddSet = () => {
+    if (!form.weight || !form.reps || !form.sets) return showToast("重量・回数・セット数を入力してください");
+    setTodaySets(prev => [...prev, { ...form, id: Date.now() }]);
+    setForm(f => ({ ...f, weight: "", reps: "", sets: "" }));
+    showToast("セット追加！");
+  };
+
+  const handleSaveWorkout = () => {
+    if (todaySets.length === 0) return showToast("セットを追加してください");
+    const existingIdx = workouts.findIndex(w => w.date === selectedDate);
+    let updated: WorkoutEntry[];
+    if (existingIdx >= 0) {
+      updated = workouts.map((w, i) =>
+        i === existingIdx ? { ...w, sets: [...w.sets, ...todaySets] } : w
+      );
+    } else {
+      const entry: WorkoutEntry = { date: selectedDate, sets: todaySets, id: Date.now() };
+      updated = [entry, ...workouts].sort((a, b) => b.date.localeCompare(a.date));
+    }
+    setWorkouts(updated);
+    save(updated);
+    setTodaySets([]);
+    showToast("ワークアウトを保存しました！");
+  };
+
+  const handleDeleteWorkout = (id: number) => {
+    const updated = workouts.filter(w => w.id !== id);
+    setWorkouts(updated);
+    save(updated);
+    showToast("削除しました");
+  };
+
+  const handleAddExercise = () => {
+    const name = newExName.trim();
+    if (!name) return showToast("種目名を入力してください");
+    if (exercises[newExMuscle].includes(name)) return showToast("すでに存在する種目です");
+    const updated = { ...exercises, [newExMuscle]: [...exercises[newExMuscle], name] };
+    setExercises(updated);
+    saveExercises(updated);
+    setForm(f => ({ ...f, muscle: newExMuscle, exercise: name }));
+    setNewExName("");
+    setShowAddModal(false);
+    showToast(`「${name}」を追加しました！`);
+  };
+
+  const handleSaveApiKey = () => {
+    const key = apiKeyInput.trim();
+    setApiKey(key);
+    localStorage.setItem(APIKEY_KEY, key);
+    setApiKeyInput("");
+    setShowApiKeyModal(false);
+    showToast("APIキーを保存しました");
+  };
+
+  const getAISuggestion = async () => {
+    if (!apiKey) {
+      setShowApiKeyModal(true);
+      setApiKeyInput("");
+      return;
+    }
+    setAiLoading(true);
+    setAiSuggestion("");
+    const relevant = workouts.flatMap(w =>
+      w.sets.filter(s => s.muscle === selectedMuscle).map(s => ({
+        date: w.date, exercise: s.exercise,
+        weight: s.weight, reps: s.reps, sets: s.sets,
+      }))
+    ).slice(0, 20);
+
+    const prompt = relevant.length === 0
+      ? `ユーザーはまだ「${selectedMuscle}」の記録がありません。初心者向けのワークアウト提案を日本語で簡潔に3つ教えてください。`
+      : `ユーザーの「${selectedMuscle}」のトレーニング履歴:\n${JSON.stringify(relevant, null, 2)}\n\nこの履歴をもとに、今日のトレーニング提案を日本語で簡潔に教えてください。重量・回数・セット数の具体的な目標値を含めてください。`;
+
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-opus-4-5",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const text = (data.content as Array<{ text?: string }> | undefined)
+        ?.map(b => b.text ?? "").join("") ?? "提案を取得できませんでした";
+      setAiSuggestion(text);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "エラーが発生しました";
+      setAiSuggestion(`エラー: ${msg}\n\nAPIキーを確認してください。`);
+    }
+    setAiLoading(false);
+  };
+
+  const stats: Record<string, { weight: number; reps: string; date: string }> = {};
+  workouts.forEach(w => {
+    w.sets.forEach(s => {
+      const key = s.exercise;
+      const val = parseFloat(s.weight);
+      if (!stats[key] || val > stats[key].weight) {
+        stats[key] = { weight: val, reps: s.reps, date: w.date };
+      }
+    });
+  });
+
+  const isToday = selectedDate === getTodayStr();
+
+  return (
+    <div style={styles.app}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+JP:wght@400;700;900&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #ff4d4d55; border-radius: 2px; }
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+        input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.6) sepia(1) saturate(5) hue-rotate(300deg); cursor: pointer; }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+        .set-card { animation: fadeIn 0.25s ease; }
+        .tab-btn { transition: color 0.2s; }
+        .btn-glow:hover { box-shadow: 0 0 20px #ff4d4d88 !important; }
+        .btn-green:hover { box-shadow: 0 0 20px #00ff8888 !important; }
+        .chip-btn { transition: all 0.15s; }
+        .add-ex-btn:hover { transform: scale(1.08); box-shadow: 0 0 20px #ff4d4d66 !important; }
+        .close-btn:hover { color: #fff !important; border-color: #666 !important; }
+        .key-btn:hover { border-color: #ff4d4d !important; color: #ff4d4d !important; }
+      `}</style>
+
+      {/* Header */}
+      <div style={styles.header}>
+        <div style={{ flex: 1, display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span style={styles.logo}>IRON<span style={{ color: "#ff4d4d" }}>LOG</span></span>
+          <span style={styles.subtitle}>筋トレ管理</span>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="key-btn" onClick={() => { setShowApiKeyModal(true); setApiKeyInput(apiKey); }}
+            title="APIキー設定"
+            style={{ ...styles.addExBtn, background: apiKey ? "#0d1a10" : "#1a0a0a", border: `1px solid ${apiKey ? "#00ff8844" : "#ff4d4d44"}`, fontSize: 16 }}>
+            🔑
+          </button>
+          <button className="add-ex-btn" onClick={() => { setShowAddModal(true); setNewExName(""); setNewExMuscle("胸"); }}
+            style={styles.addExBtn} title="種目を追加">
+            ＋
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={styles.tabs}>
+        {([["record","記録"], ["history","履歴"], ["ai","AI提案"]] as const).map(([key, label]) => (
+          <button key={key} className="tab-btn" onClick={() => setTab(key)}
+            style={{ ...styles.tab, ...(tab === key ? styles.tabActive : {}) }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div style={styles.content}>
+
+        {/* RECORD TAB */}
+        {tab === "record" && (
+          <div>
+            <div style={styles.card}>
+              <div style={styles.datePickerRow}>
+                <div>
+                  <div style={styles.cardTitle}>トレーニング記録</div>
+                  <div style={styles.dateDisplay}>
+                    {isToday ? "📅 今日" : "📅 過去の記録"} — {formatDate(selectedDate)}
+                  </div>
+                </div>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  max={getTodayStr()}
+                  onChange={e => e.target.value && setSelectedDate(e.target.value)}
+                  style={styles.dateInput}
+                />
+              </div>
+
+              {!isToday && (
+                <div style={styles.pastBadge}>⏪ 過去の日付に記録中</div>
+              )}
+
+              <div style={styles.label}>部位</div>
+              <div style={styles.chips}>
+                {MUSCLE_GROUPS.map(m => (
+                  <button key={m} className="chip-btn" onClick={() => handleMuscleChange(m)}
+                    style={{ ...styles.chip, ...(form.muscle === m ? styles.chipActive : {}) }}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+
+              <div style={styles.label}>種目</div>
+              <div style={styles.chips}>
+                {exercises[form.muscle].map(e => (
+                  <button key={e} className="chip-btn" onClick={() => setForm(f => ({ ...f, exercise: e }))}
+                    style={{ ...styles.chip, ...(form.exercise === e ? styles.chipActiveGreen : {}) }}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+
+              <div style={styles.inputRow}>
+                {([["weight", "重量(kg)"], ["reps", "回数"], ["sets", "セット数"]] as const).map(([key, label]) => (
+                  <div key={key} style={styles.inputGroup}>
+                    <div style={styles.inputLabel}>{label}</div>
+                    <input type="number" value={form[key]}
+                      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                      style={styles.input} placeholder="0" />
+                  </div>
+                ))}
+              </div>
+
+              <button className="btn-glow" onClick={handleAddSet} style={styles.btnRed}>＋ セット追加</button>
+            </div>
+
+            {todaySets.length > 0 && (
+              <div style={styles.card}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={styles.cardTitle}>追加予定セット</div>
+                  <div style={{ color: "#555", fontSize: 11 }}>{formatDate(selectedDate)}</div>
+                </div>
+                {todaySets.map((s, i) => (
+                  <div key={s.id} className="set-card" style={styles.setRow}>
+                    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 4 }}>
+                      <span style={styles.setIndex}>{i + 1}</span>
+                      <span style={styles.setMuscle}>{s.muscle}</span>
+                      <span style={styles.setExercise}>{s.exercise}</span>
+                    </div>
+                    <div style={styles.setStats}>
+                      <span style={styles.statBadge}>{s.weight}kg</span>
+                      <span style={styles.statBadge}>{s.reps}回</span>
+                      <span style={styles.statBadge}>{s.sets}set</span>
+                      <button onClick={() => setTodaySets(prev => prev.filter(x => x.id !== s.id))}
+                        style={styles.deleteSmall}>✕</button>
+                    </div>
+                  </div>
+                ))}
+                <button className="btn-green" onClick={handleSaveWorkout} style={styles.btnGreen}>
+                  💾 保存する
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* HISTORY TAB */}
+        {tab === "history" && (
+          <div>
+            {Object.keys(stats).length > 0 && (
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>🏆 自己ベスト</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+                  {Object.entries(stats).map(([ex, v]) => (
+                    <div key={ex} style={styles.prCard}>
+                      <div style={styles.prExercise}>{ex}</div>
+                      <div style={styles.prWeight}>{v.weight}<span style={{ fontSize: 12 }}>kg</span></div>
+                      <div style={styles.prDate}>{formatDate(v.date)} × {v.reps}回</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {workouts.length === 0 ? (
+              <div style={styles.empty}>まだ記録がありません。<br />最初のワークアウトを記録しよう！</div>
+            ) : workouts.map(w => (
+              <div key={w.id} style={styles.card} className="set-card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={styles.cardTitle}>{formatDate(w.date)}</div>
+                  <button onClick={() => handleDeleteWorkout(w.id)} style={styles.deleteBtn}>削除</button>
+                </div>
+                {w.sets.map((s, i) => (
+                  <div key={i} style={styles.setRow}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={styles.setMuscle}>{s.muscle}</span>
+                      <span style={styles.setExercise}>{s.exercise}</span>
+                    </div>
+                    <div style={styles.setStats}>
+                      <span style={styles.statBadge}>{s.weight}kg</span>
+                      <span style={styles.statBadge}>{s.reps}回</span>
+                      <span style={styles.statBadge}>{s.sets}set</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* AI TAB */}
+        {tab === "ai" && (
+          <div>
+            <div style={styles.card}>
+              <div style={styles.cardTitle}>🤖 AI トレーニング提案</div>
+              <div style={{ color: "#777", fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
+                過去の記録を分析して、今日のトレーニング目標を提案します。
+              </div>
+              {!apiKey && (
+                <div style={{ background: "#1a0a0a", border: "1px solid #ff4d4d33", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#ff7777" }}>
+                  ⚠️ APIキーが未設定です。右上の 🔑 からAnthropicのAPIキーを設定してください。
+                </div>
+              )}
+              <div style={styles.label}>部位を選択</div>
+              <div style={styles.chips}>
+                {MUSCLE_GROUPS.map(m => (
+                  <button key={m} className="chip-btn" onClick={() => setSelectedMuscle(m)}
+                    style={{ ...styles.chip, ...(selectedMuscle === m ? styles.chipActive : {}) }}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <button className="btn-glow" onClick={getAISuggestion} disabled={aiLoading}
+                style={{ ...styles.btnRed, opacity: aiLoading ? 0.7 : 1 }}>
+                {aiLoading ? "分析中..." : "✨ 提案を生成"}
+              </button>
+              {aiLoading && (
+                <div style={{ textAlign: "center", marginTop: 24, animation: "pulse 1.5s infinite" }}>
+                  <div style={{ fontSize: 44 }}>🏋️</div>
+                  <div style={{ color: "#ff4d4d", marginTop: 10, fontSize: 13 }}>AIが履歴を分析中...</div>
+                </div>
+              )}
+              {aiSuggestion && (
+                <div style={styles.aiResult}>
+                  <div style={styles.aiTitle}>💡 {selectedMuscle}トレーニング提案</div>
+                  <div style={styles.aiText}>{aiSuggestion}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Add Exercise Modal */}
+      {showAddModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowAddModal(false)}>
+          <div style={styles.modal} onClick={e => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <span style={styles.modalTitle}>種目を追加</span>
+              <button className="close-btn" onClick={() => setShowAddModal(false)} style={styles.modalClose}>✕</button>
+            </div>
+            <div style={styles.label}>追加先の部位</div>
+            <div style={styles.chips}>
+              {MUSCLE_GROUPS.map(m => (
+                <button key={m} className="chip-btn" onClick={() => setNewExMuscle(m)}
+                  style={{ ...styles.chip, ...(newExMuscle === m ? styles.chipActive : {}) }}>
+                  {m}
+                </button>
+              ))}
+            </div>
+            <div style={styles.label}>種目名</div>
+            <input
+              type="text"
+              value={newExName}
+              onChange={e => setNewExName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleAddExercise()}
+              placeholder="例：インクラインダンベルカール"
+              style={{ ...styles.input, textAlign: "left", padding: "12px 14px", fontSize: 14, marginBottom: 16 }}
+              autoFocus
+            />
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ color: "#444", fontSize: 11, marginBottom: 8 }}>現在の {newExMuscle} の種目</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {exercises[newExMuscle].map(e => (
+                  <span key={e} style={{ ...styles.chip, cursor: "default", fontSize: 11, color: "#555" }}>{e}</span>
+                ))}
+              </div>
+            </div>
+            <button className="btn-glow" onClick={handleAddExercise} style={styles.btnRed}>
+              ＋ 追加する
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* API Key Modal */}
+      {showApiKeyModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowApiKeyModal(false)}>
+          <div style={styles.modal} onClick={e => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <span style={styles.modalTitle}>API KEY</span>
+              <button className="close-btn" onClick={() => setShowApiKeyModal(false)} style={styles.modalClose}>✕</button>
+            </div>
+            <div style={{ color: "#666", fontSize: 12, lineHeight: 1.7, marginBottom: 16 }}>
+              AI提案機能にはAnthropicのAPIキーが必要です。<br />
+              キーは端末内にのみ保存され、外部には送信されません。
+            </div>
+            <div style={styles.label}>Anthropic APIキー</div>
+            <input
+              type="password"
+              value={apiKeyInput}
+              onChange={e => setApiKeyInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSaveApiKey()}
+              placeholder="sk-ant-..."
+              style={{ ...styles.input, textAlign: "left", padding: "12px 14px", fontSize: 14, marginBottom: 16, letterSpacing: apiKeyInput ? 2 : 0 }}
+              autoFocus
+            />
+            {apiKey && (
+              <div style={{ fontSize: 11, color: "#00ff88", marginBottom: 12 }}>
+                ✓ 現在のキー: {apiKey.slice(0, 10)}...{apiKey.slice(-4)}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10 }}>
+              {apiKey && (
+                <button onClick={() => { setApiKey(""); localStorage.removeItem(APIKEY_KEY); setShowApiKeyModal(false); showToast("APIキーを削除しました"); }}
+                  style={{ ...styles.btnRed, background: "#1a0a0a", border: "1px solid #ff4d4d44", color: "#ff4d4d", flex: 1 }}>
+                  削除
+                </button>
+              )}
+              <button className="btn-green" onClick={handleSaveApiKey} disabled={!apiKeyInput.trim()}
+                style={{ ...styles.btnGreen, flex: 2, opacity: apiKeyInput.trim() ? 1 : 0.5 }}>
+                💾 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <div style={styles.toast}>{toast}</div>}
+    </div>
+  );
+}
+
+const styles = {
+  app: {
+    background: "#0a0a0f",
+    minHeight: "100vh",
+    fontFamily: "'Noto Sans JP', sans-serif",
+    color: "#fff",
+    maxWidth: 480,
+    margin: "0 auto",
+    position: "relative" as const,
+  },
+  header: {
+    padding: "16px 20px 12px",
+    borderBottom: "1px solid #1a1a2a",
+    display: "flex",
+    alignItems: "center",
+  },
+  logo: {
+    fontFamily: "'Bebas Neue', sans-serif",
+    fontSize: 36,
+    letterSpacing: 2,
+    lineHeight: 1,
+  },
+  subtitle: { color: "#555", fontSize: 13 },
+  addExBtn: {
+    width: 38,
+    height: 38,
+    background: "linear-gradient(135deg, #ff4d4d, #cc0000)",
+    border: "none",
+    borderRadius: "50%",
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: 900,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    boxShadow: "0 2px 14px #ff4d4d55",
+    lineHeight: 1,
+    transition: "transform 0.15s, box-shadow 0.2s",
+  },
+  tabs: {
+    display: "flex",
+    background: "#0f0f1a",
+    borderBottom: "1px solid #1a1a2a",
+  },
+  tab: {
+    flex: 1,
+    padding: "14px 0",
+    background: "none",
+    border: "none",
+    color: "#555",
+    fontSize: 14,
+    fontFamily: "'Noto Sans JP', sans-serif",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  tabActive: {
+    color: "#ff4d4d",
+    borderBottom: "2px solid #ff4d4d",
+  },
+  content: { padding: "16px 16px 80px" },
+  card: {
+    background: "#111119",
+    border: "1px solid #1f1f30",
+    borderRadius: 12,
+    padding: "18px 16px",
+    marginBottom: 14,
+  },
+  cardTitle: { fontSize: 15, fontWeight: 900, letterSpacing: 0.5 },
+  datePickerRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 6,
+  },
+  dateDisplay: { color: "#666", fontSize: 12, marginTop: 4 },
+  dateInput: {
+    background: "#1a1a28",
+    border: "1px solid #ff4d4d44",
+    borderRadius: 8,
+    padding: "8px 10px",
+    color: "#ff4d4d",
+    fontSize: 13,
+    fontFamily: "'Noto Sans JP', sans-serif",
+    cursor: "pointer",
+    outline: "none",
+    flexShrink: 0,
+  },
+  pastBadge: {
+    display: "inline-block",
+    background: "#ff4d4d18",
+    border: "1px solid #ff4d4d44",
+    color: "#ff7777",
+    borderRadius: 6,
+    padding: "3px 10px",
+    fontSize: 11,
+    fontWeight: 700,
+    marginBottom: 4,
+  },
+  label: {
+    color: "#ff4d4d",
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: 1,
+    marginBottom: 8,
+    marginTop: 14,
+    textTransform: "uppercase" as const,
+  },
+  chips: { display: "flex", flexWrap: "wrap" as const, gap: 6, marginBottom: 4 },
+  chip: {
+    padding: "6px 12px",
+    background: "#1a1a28",
+    border: "1px solid #2a2a3a",
+    borderRadius: 20,
+    color: "#777",
+    fontSize: 12,
+    cursor: "pointer",
+    fontFamily: "'Noto Sans JP', sans-serif",
+  },
+  chipActive: { background: "#ff4d4d22", border: "1px solid #ff4d4d", color: "#ff4d4d" },
+  chipActiveGreen: { background: "#00ff8822", border: "1px solid #00ff88", color: "#00ff88" },
+  inputRow: { display: "flex", gap: 10, marginTop: 16, marginBottom: 16 },
+  inputGroup: { flex: 1 },
+  inputLabel: { color: "#555", fontSize: 11, marginBottom: 4 },
+  input: {
+    width: "100%",
+    background: "#0a0a14",
+    border: "1px solid #2a2a3a",
+    borderRadius: 8,
+    padding: "10px",
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: 700,
+    textAlign: "center" as const,
+    outline: "none",
+    fontFamily: "'Noto Sans JP', sans-serif",
+  },
+  btnRed: {
+    width: "100%",
+    padding: "14px",
+    background: "linear-gradient(135deg, #ff4d4d, #cc0000)",
+    border: "none",
+    borderRadius: 10,
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: 900,
+    cursor: "pointer",
+    letterSpacing: 1,
+    transition: "box-shadow 0.2s",
+    fontFamily: "'Noto Sans JP', sans-serif",
+  },
+  btnGreen: {
+    width: "100%",
+    marginTop: 14,
+    padding: "14px",
+    background: "linear-gradient(135deg, #00ff88, #00aa55)",
+    border: "none",
+    borderRadius: 10,
+    color: "#000",
+    fontSize: 15,
+    fontWeight: 900,
+    cursor: "pointer",
+    letterSpacing: 1,
+    transition: "box-shadow 0.2s",
+    fontFamily: "'Noto Sans JP', sans-serif",
+  },
+  setRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "10px 0",
+    borderBottom: "1px solid #1a1a28",
+    flexWrap: "wrap" as const,
+    gap: 6,
+  },
+  setIndex: { color: "#444", fontSize: 12, marginRight: 4 },
+  setExercise: { fontSize: 14, fontWeight: 700 },
+  setMuscle: {
+    fontSize: 10,
+    background: "#ff4d4d22",
+    color: "#ff4d4d",
+    padding: "2px 7px",
+    borderRadius: 10,
+    fontWeight: 700,
+  },
+  setStats: { display: "flex", gap: 6, alignItems: "center" },
+  statBadge: {
+    background: "#1a1a28",
+    border: "1px solid #2a2a3a",
+    borderRadius: 6,
+    padding: "3px 8px",
+    fontSize: 12,
+    color: "#ccc",
+  },
+  deleteSmall: {
+    background: "none",
+    border: "none",
+    color: "#555",
+    cursor: "pointer",
+    fontSize: 14,
+    padding: "2px 4px",
+  },
+  deleteBtn: {
+    background: "none",
+    border: "1px solid #2a2a3a",
+    color: "#555",
+    cursor: "pointer",
+    fontSize: 11,
+    padding: "4px 10px",
+    borderRadius: 6,
+    fontFamily: "'Noto Sans JP', sans-serif",
+  },
+  prCard: {
+    background: "#0a0a14",
+    border: "1px solid #1f1f30",
+    borderRadius: 8,
+    padding: "10px 12px",
+  },
+  prExercise: { fontSize: 11, color: "#666", marginBottom: 4 },
+  prWeight: { fontSize: 28, fontFamily: "'Bebas Neue', sans-serif", color: "#ff4d4d", letterSpacing: 1 },
+  prDate: { fontSize: 11, color: "#444", marginTop: 2 },
+  aiResult: {
+    marginTop: 18,
+    background: "#0d1a10",
+    border: "1px solid #00ff8833",
+    borderRadius: 10,
+    padding: 16,
+  },
+  aiTitle: { color: "#00ff88", fontSize: 13, fontWeight: 700, marginBottom: 10 },
+  aiText: { color: "#ccc", fontSize: 14, lineHeight: 1.8, whiteSpace: "pre-wrap" as const },
+  empty: {
+    textAlign: "center" as const,
+    color: "#333",
+    padding: "60px 20px",
+    fontSize: 14,
+    lineHeight: 2.2,
+  },
+  modalOverlay: {
+    position: "fixed" as const,
+    inset: 0,
+    background: "rgba(0,0,0,0.8)",
+    zIndex: 100,
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  modal: {
+    background: "#13131f",
+    border: "1px solid #2a2a3a",
+    borderRadius: "18px 18px 0 0",
+    padding: "24px 20px 44px",
+    width: "100%",
+    maxWidth: 480,
+    maxHeight: "88vh",
+    overflowY: "auto" as const,
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  modalTitle: {
+    fontFamily: "'Bebas Neue', sans-serif",
+    fontSize: 26,
+    letterSpacing: 2,
+    color: "#fff",
+  },
+  modalClose: {
+    background: "none",
+    border: "1px solid #2a2a3a",
+    color: "#555",
+    width: 32,
+    height: 32,
+    borderRadius: "50%",
+    cursor: "pointer",
+    fontSize: 13,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "color 0.2s, border-color 0.2s",
+  },
+  toast: {
+    position: "fixed" as const,
+    bottom: 30,
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: "#ff4d4d",
+    color: "#fff",
+    padding: "10px 24px",
+    borderRadius: 20,
+    fontSize: 13,
+    fontWeight: 700,
+    zIndex: 999,
+    animation: "fadeIn 0.2s ease",
+    whiteSpace: "nowrap" as const,
+    boxShadow: "0 4px 20px #ff4d4d44",
+    fontFamily: "'Noto Sans JP', sans-serif",
+  },
+} as const;
