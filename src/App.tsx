@@ -15,7 +15,6 @@ const DEFAULT_EXERCISES: Record<MuscleGroup, string[]> = {
 
 const STORAGE_KEY = "workout-tracker-data";
 const EXERCISES_KEY = "workout-tracker-exercises";
-const APIKEY_KEY = "workout-tracker-apikey";
 
 interface SetEntry {
   id: number;
@@ -44,7 +43,7 @@ function getTodayStr() {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"record" | "history" | "ai">("record");
+  const [tab, setTab] = useState<"record" | "history">("record");
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
   const [exercises, setExercises] = useState<Record<MuscleGroup, string[]>>(DEFAULT_EXERCISES);
   const [todaySets, setTodaySets] = useState<SetEntry[]>([]);
@@ -52,16 +51,10 @@ export default function App() {
   const [form, setForm] = useState<{ muscle: MuscleGroup; exercise: string; weight: string; reps: string; sets: string }>({
     muscle: "胸", exercise: "ベンチプレス", weight: "", reps: "", sets: "",
   });
-  const [aiSuggestion, setAiSuggestion] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup>("胸");
   const [toast, setToast] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [newExName, setNewExName] = useState("");
   const [newExMuscle, setNewExMuscle] = useState<MuscleGroup>("胸");
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(APIKEY_KEY) ?? "");
 
   useEffect(() => {
     try {
@@ -134,61 +127,6 @@ export default function App() {
     showToast(`「${name}」を追加しました！`);
   };
 
-  const handleSaveApiKey = () => {
-    const key = apiKeyInput.trim();
-    setApiKey(key);
-    localStorage.setItem(APIKEY_KEY, key);
-    setApiKeyInput("");
-    setShowApiKeyModal(false);
-    showToast("APIキーを保存しました");
-  };
-
-  const getAISuggestion = async () => {
-    if (!apiKey) {
-      setShowApiKeyModal(true);
-      setApiKeyInput("");
-      return;
-    }
-    setAiLoading(true);
-    setAiSuggestion("");
-    const relevant = workouts.flatMap(w =>
-      w.sets.filter(s => s.muscle === selectedMuscle).map(s => ({
-        date: w.date, exercise: s.exercise,
-        weight: s.weight, reps: s.reps, sets: s.sets,
-      }))
-    ).slice(0, 20);
-
-    const prompt = relevant.length === 0
-      ? `ユーザーはまだ「${selectedMuscle}」の記録がありません。初心者向けのワークアウト提案を日本語で簡潔に3つ教えてください。`
-      : `ユーザーの「${selectedMuscle}」のトレーニング履歴:\n${JSON.stringify(relevant, null, 2)}\n\nこの履歴をもとに、今日のトレーニング提案を日本語で簡潔に教えてください。重量・回数・セット数の具体的な目標値を含めてください。`;
-
-    try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-opus-4-5",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
-      const text = (data.content as Array<{ text?: string }> | undefined)
-        ?.map(b => b.text ?? "").join("") ?? "提案を取得できませんでした";
-      setAiSuggestion(text);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "エラーが発生しました";
-      setAiSuggestion(`エラー: ${msg}\n\nAPIキーを確認してください。`);
-    }
-    setAiLoading(false);
-  };
-
   const stats: Record<string, { weight: number; reps: string; date: string }> = {};
   workouts.forEach(w => {
     w.sets.forEach(s => {
@@ -229,22 +167,15 @@ export default function App() {
           <span style={styles.logo}>IRON<span style={{ color: "#ff4d4d" }}>LOG</span></span>
           <span style={styles.subtitle}>筋トレ管理</span>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="key-btn" onClick={() => { setShowApiKeyModal(true); setApiKeyInput(apiKey); }}
-            title="APIキー設定"
-            style={{ ...styles.addExBtn, background: apiKey ? "#0d1a10" : "#1a0a0a", border: `1px solid ${apiKey ? "#00ff8844" : "#ff4d4d44"}`, fontSize: 16 }}>
-            🔑
-          </button>
-          <button className="add-ex-btn" onClick={() => { setShowAddModal(true); setNewExName(""); setNewExMuscle("胸"); }}
-            style={styles.addExBtn} title="種目を追加">
-            ＋
-          </button>
-        </div>
+        <button className="add-ex-btn" onClick={() => { setShowAddModal(true); setNewExName(""); setNewExMuscle("胸"); }}
+          style={styles.addExBtn} title="種目を追加">
+          ＋
+        </button>
       </div>
 
       {/* Tabs */}
       <div style={styles.tabs}>
-        {([["record","記録"], ["history","履歴"], ["ai","AI提案"]] as const).map(([key, label]) => (
+        {([["record","記録"], ["history","履歴"]] as const).map(([key, label]) => (
           <button key={key} className="tab-btn" onClick={() => setTab(key)}
             style={{ ...styles.tab, ...(tab === key ? styles.tabActive : {}) }}>
             {label}
@@ -385,47 +316,6 @@ export default function App() {
           </div>
         )}
 
-        {/* AI TAB */}
-        {tab === "ai" && (
-          <div>
-            <div style={styles.card}>
-              <div style={styles.cardTitle}>🤖 AI トレーニング提案</div>
-              <div style={{ color: "#777", fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
-                過去の記録を分析して、今日のトレーニング目標を提案します。
-              </div>
-              {!apiKey && (
-                <div style={{ background: "#1a0a0a", border: "1px solid #ff4d4d33", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#ff7777" }}>
-                  ⚠️ APIキーが未設定です。右上の 🔑 からAnthropicのAPIキーを設定してください。
-                </div>
-              )}
-              <div style={styles.label}>部位を選択</div>
-              <div style={styles.chips}>
-                {MUSCLE_GROUPS.map(m => (
-                  <button key={m} className="chip-btn" onClick={() => setSelectedMuscle(m)}
-                    style={{ ...styles.chip, ...(selectedMuscle === m ? styles.chipActive : {}) }}>
-                    {m}
-                  </button>
-                ))}
-              </div>
-              <button className="btn-glow" onClick={getAISuggestion} disabled={aiLoading}
-                style={{ ...styles.btnRed, opacity: aiLoading ? 0.7 : 1 }}>
-                {aiLoading ? "分析中..." : "✨ 提案を生成"}
-              </button>
-              {aiLoading && (
-                <div style={{ textAlign: "center", marginTop: 24, animation: "pulse 1.5s infinite" }}>
-                  <div style={{ fontSize: 44 }}>🏋️</div>
-                  <div style={{ color: "#ff4d4d", marginTop: 10, fontSize: 13 }}>AIが履歴を分析中...</div>
-                </div>
-              )}
-              {aiSuggestion && (
-                <div style={styles.aiResult}>
-                  <div style={styles.aiTitle}>💡 {selectedMuscle}トレーニング提案</div>
-                  <div style={styles.aiText}>{aiSuggestion}</div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Add Exercise Modal */}
@@ -466,49 +356,6 @@ export default function App() {
             <button className="btn-glow" onClick={handleAddExercise} style={styles.btnRed}>
               ＋ 追加する
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* API Key Modal */}
-      {showApiKeyModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowApiKeyModal(false)}>
-          <div style={styles.modal} onClick={e => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <span style={styles.modalTitle}>API KEY</span>
-              <button className="close-btn" onClick={() => setShowApiKeyModal(false)} style={styles.modalClose}>✕</button>
-            </div>
-            <div style={{ color: "#666", fontSize: 12, lineHeight: 1.7, marginBottom: 16 }}>
-              AI提案機能にはAnthropicのAPIキーが必要です。<br />
-              キーは端末内にのみ保存され、外部には送信されません。
-            </div>
-            <div style={styles.label}>Anthropic APIキー</div>
-            <input
-              type="password"
-              value={apiKeyInput}
-              onChange={e => setApiKeyInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleSaveApiKey()}
-              placeholder="sk-ant-..."
-              style={{ ...styles.input, textAlign: "left", padding: "12px 14px", fontSize: 14, marginBottom: 16, letterSpacing: apiKeyInput ? 2 : 0 }}
-              autoFocus
-            />
-            {apiKey && (
-              <div style={{ fontSize: 11, color: "#00ff88", marginBottom: 12 }}>
-                ✓ 現在のキー: {apiKey.slice(0, 10)}...{apiKey.slice(-4)}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 10 }}>
-              {apiKey && (
-                <button onClick={() => { setApiKey(""); localStorage.removeItem(APIKEY_KEY); setShowApiKeyModal(false); showToast("APIキーを削除しました"); }}
-                  style={{ ...styles.btnRed, background: "#1a0a0a", border: "1px solid #ff4d4d44", color: "#ff4d4d", flex: 1 }}>
-                  削除
-                </button>
-              )}
-              <button className="btn-green" onClick={handleSaveApiKey} disabled={!apiKeyInput.trim()}
-                style={{ ...styles.btnGreen, flex: 2, opacity: apiKeyInput.trim() ? 1 : 0.5 }}>
-                💾 保存
-              </button>
-            </div>
           </div>
         </div>
       )}
