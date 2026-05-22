@@ -13,29 +13,7 @@ const DEFAULT_EXERCISES: Record<MuscleGroup, string[]> = {
   全身: ["バーピー", "クリーン＆プレス", "スナッチ", "ケトルベルスイング", "マウンテンクライマー"],
 };
 
-// PR評価基準（体重倍率）
 type SexKey = "male" | "female" | "other";
-const PR_STANDARDS: Record<string, Record<SexKey, number[]>> = {
-  "ベンチプレス":     { male: [0.5, 0.75, 1.0, 1.25, 1.5],  female: [0.3, 0.45, 0.65, 0.8, 1.0],  other: [0.4, 0.6, 0.8, 1.0, 1.25] },
-  "インクラインプレス":{ male: [0.4, 0.6, 0.8, 1.0, 1.2],   female: [0.25, 0.4, 0.55, 0.7, 0.9],  other: [0.35, 0.5, 0.7, 0.9, 1.1] },
-  "スクワット":       { male: [0.75, 1.0, 1.25, 1.5, 1.75], female: [0.5, 0.75, 1.0, 1.25, 1.5],  other: [0.6, 0.85, 1.1, 1.35, 1.6] },
-  "デッドリフト":     { male: [1.0, 1.25, 1.5, 1.75, 2.0],  female: [0.65, 0.9, 1.15, 1.4, 1.65], other: [0.8, 1.05, 1.3, 1.6, 1.85] },
-  "ショルダープレス":  { male: [0.3, 0.45, 0.6, 0.75, 0.9],  female: [0.2, 0.3, 0.45, 0.55, 0.7],  other: [0.25, 0.38, 0.53, 0.65, 0.8] },
-  "バーベルカール":    { male: [0.3, 0.45, 0.6, 0.75, 0.9],  female: [0.2, 0.3, 0.4, 0.55, 0.7],   other: [0.25, 0.38, 0.5, 0.65, 0.8] },
-};
-const PR_DEFAULT: Record<SexKey, number[]> = {
-  male:   [0.3, 0.5, 0.7, 0.9, 1.1],
-  female: [0.2, 0.35, 0.5, 0.65, 0.8],
-  other:  [0.25, 0.42, 0.6, 0.78, 0.95],
-};
-
-function getPRRating(exerciseName: string, prKg: number, bodyWeightKg: number, sex: SexKey): number {
-  const thresholds = PR_STANDARDS[exerciseName]?.[sex] ?? PR_DEFAULT[sex];
-  const ratio = prKg / bodyWeightKg;
-  let stars = 0;
-  for (const t of thresholds) { if (ratio >= t) stars++; }
-  return Math.max(1, stars); // 記録があれば最低1
-}
 
 const STORAGE_KEY = "workout-tracker-data";
 const EXERCISES_KEY = "workout-tracker-exercises";
@@ -69,13 +47,11 @@ function getTodayFileStr() {
   return getTodayStr().replace(/-/g, "");
 }
 
-// マッチョシルエットSVG
-const MuscleIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <ellipse cx="50" cy="18" rx="13" ry="14" fill="currentColor"/>
-    <path d="M28 38 C28 32 36 28 50 28 C64 28 72 32 72 38 L76 62 C76 66 72 68 68 66 L66 58 L64 80 C64 84 60 86 56 84 L50 80 L44 84 C40 86 36 84 36 80 L34 58 L32 66 C28 68 24 66 24 62 Z" fill="currentColor"/>
-    <path d="M28 40 C22 40 14 44 12 52 C10 58 14 64 20 62 C18 58 22 54 28 54 Z" fill="currentColor"/>
-    <path d="M72 40 C78 40 86 44 88 52 C90 58 86 64 80 62 C82 58 78 54 72 54 Z" fill="currentColor"/>
+// 人型シルエットSVG
+const PersonIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="12" cy="7" r="4" fill="currentColor"/>
+    <path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
   </svg>
 );
 
@@ -197,8 +173,6 @@ export default function App() {
   });
 
   const isToday = selectedDate === getTodayStr();
-  const bodyWeight = parseFloat(profile.weight);
-  const hasWeight = !isNaN(bodyWeight) && bodyWeight > 0;
 
   return (
     <div style={styles.app}>
@@ -216,7 +190,7 @@ export default function App() {
         .btn-green:hover { box-shadow: 0 0 20px #00ff8888 !important; }
         .chip-btn { transition: all 0.15s; }
         .close-btn:hover { color: #fff !important; border-color: #666 !important; }
-        .profile-btn:hover { color: #ff4d4d !important; }
+        .profile-btn:hover { opacity: 0.8; }
       `}</style>
 
       {/* Header */}
@@ -227,7 +201,7 @@ export default function App() {
         </div>
         <button className="profile-btn" onClick={() => { setProfileDraft(profile); setShowProfileModal(true); }}
           style={styles.profileBtn} title="プロフィール">
-          <MuscleIcon />
+          <PersonIcon />
         </button>
       </div>
 
@@ -387,9 +361,6 @@ export default function App() {
                   {list.map((name, i) => {
                     const pr = stats[name];
                     const isCustom = !DEFAULT_EXERCISES[muscle].includes(name);
-                    const stars = (pr && hasWeight)
-                      ? getPRRating(name, pr.weight, bodyWeight, profile.sex)
-                      : null;
                     return (
                       <div key={name} style={{
                         ...styles.setRow,
@@ -411,11 +382,6 @@ export default function App() {
                               </span>
                               <span style={{ fontSize: 11, color: "#555" }}>× {pr.reps}回</span>
                               <span style={{ fontSize: 10, color: "#444" }}>{formatDate(pr.date)}</span>
-                              {stars !== null && (
-                                <span style={{ fontSize: 13, letterSpacing: -1 }} title={`レベル${stars}/5`}>
-                                  {"★".repeat(stars)}{"☆".repeat(5 - stars)}
-                                </span>
-                              )}
                             </div>
                           ) : (
                             <span style={{ fontSize: 11, color: "#333" }}>記録なし</span>
@@ -488,7 +454,7 @@ export default function App() {
               <button className="close-btn" onClick={() => setShowProfileModal(false)} style={styles.modalClose}>✕</button>
             </div>
             <div style={{ color: "#555", fontSize: 12, marginBottom: 16, lineHeight: 1.6 }}>
-              体重を登録すると種目タブでPR評価が表示されます。
+              身長・体重などのプロフィールを登録できます。
             </div>
 
             <div style={styles.label}>性別</div>
@@ -554,14 +520,14 @@ const styles = {
   subtitle: { color: "#555", fontSize: 13 },
   profileBtn: {
     width: 38, height: 38,
-    background: "none",
-    border: "1px solid #2a2a3a",
+    background: "#fff",
+    border: "1px solid #ff4d4d",
     borderRadius: "50%",
-    color: "#666",
+    color: "#ff4d4d",
     cursor: "pointer",
     display: "flex", alignItems: "center", justifyContent: "center",
     flexShrink: 0,
-    transition: "color 0.2s, border-color 0.2s",
+    transition: "opacity 0.2s",
   },
   tabs: { display: "flex", background: "#0f0f1a", borderBottom: "1px solid #1a1a2a" },
   tab: {
