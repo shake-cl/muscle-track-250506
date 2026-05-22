@@ -47,11 +47,11 @@ function getTodayFileStr() {
   return getTodayStr().replace(/-/g, "");
 }
 
-// 人型シルエットSVG
+// 人型シルエットSVG（黒）
 const PersonIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="12" cy="7" r="4" fill="currentColor"/>
-    <path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
+  <svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="12" cy="5.5" r="3.2" fill="black"/>
+    <path d="M6 22 L6 14 Q6 9.5 12 9.5 Q18 9.5 18 14 L18 22 L14.5 22 L14.5 16.5 L9.5 16.5 L9.5 22 Z" fill="black"/>
   </svg>
 );
 
@@ -157,7 +157,7 @@ export default function App() {
     const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `ironlog_${getTodayFileStr()}.txt`;
+    a.href = url; a.download = `froge_${getTodayFileStr()}.txt`;
     a.click(); URL.revokeObjectURL(url);
     showToast("テキストをダウンロードしました");
   };
@@ -196,7 +196,7 @@ export default function App() {
       {/* Header */}
       <div style={styles.header}>
         <div style={{ flex: 1, display: "flex", alignItems: "baseline", gap: 10 }}>
-          <span style={styles.logo}>IRON<span style={{ color: "#ff4d4d" }}>LOG</span></span>
+          <span style={styles.logo}>FRO<span style={{ color: "#ff4d4d" }}>GE</span></span>
           <span style={styles.subtitle}>筋トレ管理</span>
         </div>
         <button className="profile-btn" onClick={() => { setProfileDraft(profile); setShowProfileModal(true); }}

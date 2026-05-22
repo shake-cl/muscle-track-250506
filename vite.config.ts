@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.svg'],
       manifest: {
-        name: 'IRONLOG - 筋トレ管理',
-        short_name: 'IRONLOG',
+        name: 'FROGE - 筋トレ管理',
+        short_name: 'FROGE',
         description: '筋トレ記録・進捗管理アプリ',
         theme_color: '#0a0a0f',
         background_color: '#0a0a0f',

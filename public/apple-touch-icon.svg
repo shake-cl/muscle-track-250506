@@ -1,5 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180">
-  <rect width="180" height="180" rx="40" fill="#0a0a0f"/>
-  <text x="90" y="115" font-family="Arial Black, sans-serif" font-size="80" font-weight="900" text-anchor="middle" fill="#ff4d4d">I</text>
-  <text x="90" y="150" font-family="Arial, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#ffffff" letter-spacing="3">IRONLOG</text>
+  <!-- Square black background (no border radius) -->
+  <rect width="180" height="180" fill="#000000"/>
+
+  <!-- Red bold F letter -->
+  <!-- Vertical stem -->
+  <rect x="36" y="12" width="32" height="156" fill="#cc1111"/>
+  <!-- Top horizontal bar -->
+  <rect x="36" y="12" width="120" height="30" fill="#cc1111"/>
+  <!-- Middle horizontal bar -->
+  <rect x="36" y="66" width="92" height="26" fill="#cc1111"/>
+
+  <!-- Crack lines on stem near fist -->
+  <path d="M50 122 Q43 133 47 145 M57 118 Q64 131 59 148 M53 126 Q47 140 51 156" stroke="#000" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85"/>
+
+  <!-- White fist (front view, gripping bottom of stem) -->
+  <!-- 4 finger rounded bumps -->
+  <rect x="29" y="98" width="15" height="26" rx="7" fill="white"/>
+  <rect x="46" y="93" width="15" height="28" rx="7" fill="white"/>
+  <rect x="63" y="95" width="14" height="27" rx="7" fill="white"/>
+  <rect x="78" y="101" width="13" height="22" rx="6" fill="white"/>
+  <!-- Main fist body (palm) -->
+  <rect x="26" y="116" width="68" height="52" rx="11" fill="white"/>
+  <!-- Thumb -->
+  <path d="M26 142 Q11 135 10 150 Q10 165 25 165 L26 165 Z" fill="white"/>
+  <!-- Fist outline for definition -->
+  <rect x="26" y="116" width="68" height="52" rx="11" fill="none" stroke="#1a1a1a" stroke-width="2.5"/>
+  <!-- Knuckle divider lines -->
+  <path d="M44 121 L44 134 M59 121 L59 134 M73 121 L73 134" stroke="#ccc" stroke-width="2" stroke-linecap="round"/>
+  <!-- Wrist line -->
+  <path d="M28 155 Q60 158 92 155" stroke="#ddd" stroke-width="1.5" fill="none" stroke-linecap="round"/>
 </svg>
