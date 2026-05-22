@@ -43,7 +43,8 @@ function getTodayStr() {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"record" | "history">("record");
+  const [tab, setTab] = useState<"record" | "history" | "exercises">("record");
+  const [exFilter, setExFilter] = useState<MuscleGroup | "all">("all");
   const [workouts, setWorkouts] = useState<WorkoutEntry[]>([]);
   const [exercises, setExercises] = useState<Record<MuscleGroup, string[]>>(DEFAULT_EXERCISES);
   const [todaySets, setTodaySets] = useState<SetEntry[]>([]);
@@ -127,6 +128,13 @@ export default function App() {
     showToast(`「${name}」を追加しました！`);
   };
 
+  const handleDeleteExercise = (muscle: MuscleGroup, name: string) => {
+    const updated = { ...exercises, [muscle]: exercises[muscle].filter(e => e !== name) };
+    setExercises(updated);
+    saveExercises(updated);
+    showToast(`「${name}」を削除しました`);
+  };
+
   const stats: Record<string, { weight: number; reps: string; date: string }> = {};
   workouts.forEach(w => {
     w.sets.forEach(s => {
@@ -167,16 +175,12 @@ export default function App() {
           <span style={styles.logo}>IRON<span style={{ color: "#ff4d4d" }}>LOG</span></span>
           <span style={styles.subtitle}>筋トレ管理</span>
         </div>
-        <button className="add-ex-btn" onClick={() => { setShowAddModal(true); setNewExName(""); setNewExMuscle("胸"); }}
-          style={styles.addExBtn} title="種目を追加">
-          ＋
-        </button>
       </div>
 
       {/* Tabs */}
       <div style={styles.tabs}>
-        {([["record","記録"], ["history","履歴"]] as const).map(([key, label]) => (
-          <button key={key} className="tab-btn" onClick={() => setTab(key)}
+        {([["record","記録"], ["history","履歴"], ["exercises","種目"]] as const).map(([key, label]) => (
+          <button key={key} className="tab-btn" onClick={() => setTab(key as typeof tab)}
             style={{ ...styles.tab, ...(tab === key ? styles.tabActive : {}) }}>
             {label}
           </button>
@@ -313,6 +317,81 @@ export default function App() {
                 ))}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* EXERCISES TAB */}
+        {tab === "exercises" && (
+          <div>
+            {/* 部位フィルター */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+              <button className="chip-btn" onClick={() => setExFilter("all")}
+                style={{ ...styles.chip, ...(exFilter === "all" ? styles.chipActive : {}) }}>
+                すべて
+              </button>
+              {MUSCLE_GROUPS.map(m => (
+                <button key={m} className="chip-btn" onClick={() => setExFilter(m)}
+                  style={{ ...styles.chip, ...(exFilter === m ? styles.chipActive : {}) }}>
+                  {m}
+                </button>
+              ))}
+            </div>
+
+            {/* 種目一覧 */}
+            {MUSCLE_GROUPS.filter(m => exFilter === "all" || exFilter === m).map(muscle => {
+              const list = exercises[muscle];
+              if (list.length === 0) return null;
+              return (
+                <div key={muscle} style={styles.card}>
+                  <div style={{ ...styles.label, marginTop: 0 }}>{muscle}</div>
+                  {list.map((name, i) => {
+                    const pr = stats[name];
+                    const isCustom = !DEFAULT_EXERCISES[muscle].includes(name);
+                    return (
+                      <div key={name} style={{
+                        ...styles.setRow,
+                        borderBottom: i < list.length - 1 ? "1px solid #1a1a28" : "none",
+                        alignItems: "center",
+                      }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: pr ? 3 : 0 }}>
+                            <span style={styles.setExercise}>{name}</span>
+                            {isCustom && (
+                              <span style={{ fontSize: 10, background: "#ff4d4d22", color: "#ff4d4d", border: "1px solid #ff4d4d44", borderRadius: 4, padding: "1px 5px" }}>
+                                カスタム
+                              </span>
+                            )}
+                          </div>
+                          {pr ? (
+                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                              <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: "#ff4d4d", letterSpacing: 1, lineHeight: 1 }}>
+                                {pr.weight}<span style={{ fontSize: 12, fontFamily: "inherit" }}>kg</span>
+                              </span>
+                              <span style={{ fontSize: 11, color: "#555" }}>× {pr.reps}回</span>
+                              <span style={{ fontSize: 10, color: "#444" }}>{formatDate(pr.date)}</span>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: 11, color: "#333" }}>記録なし</span>
+                          )}
+                        </div>
+                        {isCustom && (
+                          <button onClick={() => handleDeleteExercise(muscle, name)}
+                            style={{ ...styles.deleteBtn, marginLeft: 8, flexShrink: 0 }}>
+                            削除
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+
+            {/* 種目追加ボタン */}
+            <button className="btn-glow" onClick={() => { setShowAddModal(true); setNewExName(""); setNewExMuscle(exFilter !== "all" ? exFilter : "胸"); }}
+              style={styles.btnRed}>
+              ＋ 種目を追加
+            </button>
           </div>
         )}
 
